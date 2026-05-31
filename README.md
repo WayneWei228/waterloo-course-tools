@@ -7,6 +7,21 @@ Codex plugin containing reusable skills for UWaterloo course workflows.
 - `uwaterloo-learn-download`: syncs course materials from UWaterloo Learn/Brightspace using Learn-only cookies, D2L enrollment discovery, manifest protection, and external material-page candidate discovery.
 - `waterloo-piazza-fetch`: uses `browser-use` to join, check, and summarize course Piazza information from a logged-in browser session.
 
+## Requirements
+
+- Python 3.
+- `browser-use` CLI for the Piazza workflow and for browser-backed Learn authentication checks.
+- A browser session logged in to the relevant UWaterloo/Piazza account.
+
+Install or verify `browser-use` before using `waterloo-piazza-fetch`:
+
+```bash
+curl -fsSL https://browser-use.com/cli/install.sh | bash
+browser-use doctor
+```
+
+The Learn downloader script itself uses Python standard-library HTTP APIs, but it expects valid Learn-only cookies exported from an authenticated browser session.
+
 ## Repository Layout
 
 ```text

@@ -7,6 +7,17 @@ description: Use when fetching, joining, checking, or summarizing UWaterloo cour
 
 Use this skill for Waterloo course Piazza work: checking joined classes, joining a course Piazza after user approval, and summarizing instructor/student Piazza posts into a local Markdown snapshot.
 
+## Requirements
+
+- `browser-use` CLI must be installed and working.
+- The browser profile used by `browser-use` must be logged in to Piazza.
+- If `browser-use` is missing, install it before continuing:
+
+```bash
+curl -fsSL https://browser-use.com/cli/install.sh | bash
+browser-use doctor
+```
+
 ## Core Rules
 
 - Use `browser-use` for Piazza because login/session state and dynamic UI matter.

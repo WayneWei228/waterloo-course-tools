@@ -7,6 +7,13 @@ description: Use when downloading course content files or announcements from UWa
 
 Use this skill to sync UWaterloo Learn/Brightspace course materials into a local workspace. The workflow is intended to be reusable across Waterloo students and terms: courses are discovered from the currently logged-in Learn account, not from hardcoded course IDs.
 
+## Requirements
+
+- Python 3.
+- An authenticated Learn browser session.
+- Learn-only cookies exported from that browser session.
+- Browser automation such as `browser-use` is recommended for login verification and external course-page inspection.
+
 ## Stable Fetch Contract
 
 This skill is the stable entrypoint for Learn fetch work. Do not create one-off workspace scripts when this skill applies. Use the bundled script from this skill directory:
