@@ -43,21 +43,43 @@ Use `--courses-json /path/to/courses.json` only when the caller explicitly needs
 
 ## Authentication And Cookie Export
 
-The downloader expects an authenticated Learn session. A reliable local approach is:
+The downloader expects an authenticated Learn session. Prefer the user's local Chrome profile in headed mode so the login/Duo window is visible and the session matches what the user actually completed.
 
-1. Start Chrome with remote debugging using a non-default user-data directory.
-2. Open `https://learn.uwaterloo.ca` and complete login/Duo in the browser.
-3. Use CDP `Network.getAllCookies`.
-4. Filter the result down to Learn-only cookies before writing `/tmp/learn_cookies.json`.
+Reliable local approach:
+
+1. Detect local Chrome profiles:
+
+```bash
+browser-use profile list
+```
+
+2. Open Learn with headed browser-use and the detected local Chrome profile. Do not hardcode a profile name; use the profile name returned by `browser-use profile list`.
+
+```bash
+browser-use --headed --profile "<detected Chrome profile>" open https://learn.uwaterloo.ca
+browser-use state
+```
+
+3. If `browser-use state` still shows Microsoft/ADFS login, have the user complete login/Duo in the visible headed window, then re-run `browser-use state`. Continue only when the state shows the Learn home page or course list.
+
+4. Export cookies from the logged-in headed session, then filter down to Learn-only cookies before writing `/tmp/learn_cookies.json`.
+
+```bash
+browser-use cookies export --url https://learn.uwaterloo.ca /tmp/learn_cookies_raw.json
+```
 
 Cookie filtering rule:
 
 ```python
+import json
+
+all_cookies = json.load(open("/tmp/learn_cookies_raw.json"))
 cookies = [
     c for c in all_cookies
     if c.get("domain", "") == "learn.uwaterloo.ca"
     or c.get("domain", "").endswith(".learn.uwaterloo.ca")
 ]
+json.dump(cookies, open("/tmp/learn_cookies.json", "w"), indent=2)
 ```
 
 Do not export broad Waterloo, Google, Chrome profile, or unrelated site cookies.

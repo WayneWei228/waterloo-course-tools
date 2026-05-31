@@ -10,7 +10,7 @@ Use this skill for Waterloo course Piazza work: checking joined classes, joining
 ## Requirements
 
 - `browser-use` CLI must be installed and working.
-- The browser profile used by `browser-use` must be logged in to Piazza.
+- The local Chrome profile used by `browser-use` must be logged in to Piazza.
 - If `browser-use` is missing, install it before continuing:
 
 ```bash
@@ -21,8 +21,10 @@ browser-use doctor
 ## Core Rules
 
 - Use `browser-use` for Piazza because login/session state and dynamic UI matter.
+- Prefer headed local Chrome profile sessions for authenticated work:
+  `browser-use --headed --profile "<detected Chrome profile>" open https://piazza.com`.
 - Do not join or modify account state unless the user explicitly asks. Reading/opening posts is allowed when the user asks to fetch/check, but warn that unread posts may become read.
-- Treat Piazza data as browser-visible unless a stable API archive flow is deliberately added later.
+- For specific user questions, prefer targeted authenticated API queries over full snapshots or opening many unread posts.
 - Do not hardcode this user's current courses as the general solution. Discover course links from local files and Piazza class dropdown state.
 - Keep sensitive access info private to the user's local workspace; do not paste door codes or private post details into public messages unless the user asks.
 
@@ -39,16 +41,17 @@ find . -maxdepth 4 -iname '*piazza*' -print
 
 ```bash
 browser-use sessions
-browser-use --profile Default open https://piazza.com
+browser-use profile list
+browser-use --headed --profile "<detected Chrome profile>" open https://piazza.com
 browser-use state
 ```
 
-If `browser-use` cannot access `~/.browser-use` due to sandbox permissions, rerun the browser-use command with approval. Prefer the existing logged-in Default profile when available.
+If `browser-use` cannot access `~/.browser-use` due to sandbox permissions, rerun the browser-use command with approval. Use headed mode so the user can see and complete login in the correct local Chrome window. Do not hardcode a profile name; use the profile name returned by `browser-use profile list`.
 
 3. For a known course link, open it directly:
 
 ```bash
-browser-use --profile Default open https://piazza.com/uwaterloo.ca/<term>/<course>
+browser-use --headed --profile "<detected Chrome profile>" open https://piazza.com/uwaterloo.ca/<term>/<course>
 browser-use state
 ```
 
@@ -72,6 +75,50 @@ Open individual posts only when needed for full details:
 browser-use click <post-wrapper-index>
 browser-use state
 ```
+
+## Targeted Piazza API Query
+
+When the user asks a specific question, such as "Does ECE327 have anyone looking for a lab teammate?", do not default to a full archive. Use the logged-in browser session to query only relevant posts:
+
+1. Open the course in headed local Chrome and get the class id from the URL:
+
+```bash
+browser-use --headed --profile "<detected Chrome profile>" open https://piazza.com
+browser-use state
+browser-use tab list
+```
+
+2. Export Piazza cookies from the authenticated session:
+
+```bash
+browser-use cookies export --url https://piazza.com /tmp/piazza_cookies.json
+```
+
+3. Use Piazza's authenticated API for the selected class:
+
+```text
+POST https://piazza.com/logic/api?method=network.filter_feed
+{"method":"network.filter_feed","params":{"nid":"<class_id>","sort":"date_desc","hidden":"both"}}
+
+POST https://piazza.com/logic/api?method=content.get
+{"method":"content.get","params":{"cid":"<post_id>"}}
+```
+
+Include the `session_id` cookie value as the `CSRF-Token` header when making local HTTP requests. First call `network.filter_feed`, filter post subjects/snippets by the user's keywords, then call `content.get` only for the matching post ids.
+
+For teammate/lab-partner questions, search terms should include:
+
+```text
+lab partner, teammate, team mate, group, section swap, swap lab, lab section, partner
+```
+
+Always include references in the answer so the user can double-check:
+
+```text
+https://piazza.com/class/<class_id>/post/<post_nr>
+```
+
+Use `post_nr` from the API field `nr`, not the opaque post id.
 
 ## Output
 
