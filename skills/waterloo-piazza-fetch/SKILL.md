@@ -23,6 +23,7 @@ browser-use doctor
 - Use `browser-use` for Piazza because login/session state and dynamic UI matter.
 - Prefer headed local Chrome profile sessions for authenticated work:
   `browser-use --headed --profile "<detected Chrome profile>" open https://piazza.com`.
+- At the end of every task that opens browser-use, close the browser-use session with `browser-use close` and verify `browser-use sessions` shows no active sessions. Only leave a session open when the user explicitly asks, and tell the user it remains open.
 - Do not join or modify account state unless the user explicitly asks. Reading/opening posts is allowed when the user asks to fetch/check, but warn that unread posts may become read.
 - For specific user questions, prefer targeted authenticated API queries over full snapshots or opening many unread posts.
 - Do not hardcode this user's current courses as the general solution. Discover course links from local files and Piazza class dropdown state.
@@ -119,6 +120,23 @@ https://piazza.com/class/<class_id>/post/<post_nr>
 ```
 
 Use `post_nr` from the API field `nr`, not the opaque post id.
+
+## Cleanup
+
+Before finishing any Piazza browser-use task:
+
+```bash
+browser-use close
+browser-use sessions
+```
+
+The expected final session output is:
+
+```text
+No active sessions
+```
+
+Do not leave a headed Chrome session running in the background. It can make Chrome appear impossible to close for the user.
 
 ## Output
 

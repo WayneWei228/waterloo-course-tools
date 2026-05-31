@@ -36,6 +36,7 @@ Use `--courses-json /path/to/courses.json` only when the caller explicitly needs
 
 - Cookie export must only save cookies whose domain is `learn.uwaterloo.ca` or a subdomain of `learn.uwaterloo.ca`.
 - Store exported Learn cookies in a local temp file such as `/tmp/learn_cookies.json`; never commit cookies.
+- Any headed `browser-use` session opened for login, cookie export, or external-page inspection must be closed before the task is complete. Run `browser-use close` and verify `browser-use sessions` shows no active sessions unless the user explicitly asks to keep the browser open.
 - Fetch behavior must be consistent across runs: same bundled script, same manifest logic, same output structure.
 - `learn_content/_manifest.json` is the authoritative sync ledger.
 - Do not hardcode student-specific course IDs, folders, external webpages, or term assumptions into the general workflow.
@@ -83,6 +84,23 @@ json.dump(cookies, open("/tmp/learn_cookies.json", "w"), indent=2)
 ```
 
 Do not export broad Waterloo, Google, Chrome profile, or unrelated site cookies.
+
+## Browser Cleanup
+
+Before finishing any workflow that opened browser-use:
+
+```bash
+browser-use close
+browser-use sessions
+```
+
+The expected final session output is:
+
+```text
+No active sessions
+```
+
+Do not leave a headed Chrome session running in the background. It can make Chrome appear impossible to close for the user.
 
 ## External Course Webpages
 
