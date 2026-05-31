@@ -1,0 +1,29 @@
+{
+  "name": "waterloo-course-tools",
+  "description": "Marketplace for UWaterloo Learn/Brightspace and Piazza course workflow skills.",
+  "owner": {
+    "name": "Wayne Wei"
+  },
+  "plugins": [
+    {
+      "name": "waterloo-course-tools",
+      "source": "./",
+      "description": "Skills for UWaterloo Learn/Brightspace and Piazza course workflows.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Wayne Wei"
+      },
+      "homepage": "https://github.com/WayneWei228/waterloo-course-tools",
+      "repository": "https://github.com/WayneWei228/waterloo-course-tools",
+      "license": "MIT",
+      "keywords": [
+        "waterloo",
+        "uwaterloo",
+        "learn",
+        "brightspace",
+        "piazza",
+        "courses"
+      ]
+    }
+  ]
+}
