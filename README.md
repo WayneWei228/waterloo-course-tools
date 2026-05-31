@@ -2,7 +2,7 @@
 
 Waterloo Course Tools is a small plugin for coding agents that helps Waterloo students keep course information in sync across Learn/Brightspace and Piazza.
 
-It packages reusable skills for downloading Learn materials safely, discovering external course webpages, and checking Piazza posts from an authenticated browser session.
+It packages reusable skills for downloading Learn materials safely, discovering external course webpages, checking Piazza posts from an authenticated browser session, and turning confirmed Learn due dates into calendar events.
 
 ## Quickstart
 
@@ -10,10 +10,11 @@ Give your agent Waterloo Course Tools: [Claude Code](#claude-code), [Codex](#cod
 
 ## How It Works
 
-Waterloo courses often split information across Learn/Brightspace, external course webpages, and Piazza. This plugin gives your agent two focused workflows:
+Waterloo courses often split information across Learn/Brightspace, external course webpages, Piazza, and assignment PDFs. This plugin gives your agent three focused workflows:
 
 1. `uwaterloo-learn-download` discovers the current student's Learn enrollments, downloads course materials through D2L APIs, and protects local edits with a manifest.
 2. `waterloo-piazza-fetch` uses `browser-use` with a logged-in browser session to join, check, and summarize Piazza course information.
+3. `learn-due-calendar` searches locally synced Learn materials for confirmed due dates and can add them to Apple Calendar on macOS.
 
 The skills are designed to avoid course-specific hardcoding. Learn courses are discovered from the logged-in account, and external material pages are selected from announcement/TOC context rather than fixed hostnames or course names.
 
@@ -21,6 +22,8 @@ The skills are designed to avoid course-specific hardcoding. Learn courses are d
 
 - Python 3.
 - `browser-use` CLI for Piazza workflows and browser-backed Learn checks.
+- `pdftotext` for extracting due dates from PDF course materials.
+- macOS Calendar.app access when creating Apple Calendar events.
 - A browser session logged in to the relevant UWaterloo Learn/Piazza account.
 
 Install or verify `browser-use` before using the Piazza skill:
@@ -81,6 +84,8 @@ python3 /path/to/plugin-creator/scripts/validate_plugin.py .
 3. **Sync Learn materials** - Run the bundled Learn downloader against a workspace root. It writes `learn_content/`, mirrors course folders, and protects local edits with `_manifest.json`.
 4. **Inspect external material candidates** - When a course links to an external material page, review `learn_content/<COURSE>/_external_candidates.json` and let the agent choose the real material source semantically.
 5. **Check Piazza** - Use `browser-use` to inspect joined classes, join a class only after explicit user approval, and write a dated Piazza snapshot.
+6. **Find due dates** - Search locally synced Learn materials and extracted PDF text for homework, assignment, deliverable, and course-calendar deadlines.
+7. **Add calendar events** - When requested, create or update all-day Apple Calendar events and verify the saved event from Calendar.app.
 
 ## What's Inside
 
@@ -88,6 +93,7 @@ python3 /path/to/plugin-creator/scripts/validate_plugin.py .
 
 - **uwaterloo-learn-download** - Downloads UWaterloo Learn/Brightspace course materials, discovers enrollments dynamically, protects local edits with a manifest, and records external webpage candidates.
 - **waterloo-piazza-fetch** - Uses `browser-use` to inspect Piazza classes, join requested course Piazza pages, and summarize high-signal course posts.
+- **learn-due-calendar** - Finds due dates from locally synced Learn materials and can create verified Apple Calendar events on macOS.
 
 ### Scripts
 
@@ -100,6 +106,7 @@ This plugin is designed so course data stays local:
 - Do not commit Learn cookies.
 - Do not commit downloaded course materials.
 - Do not commit Piazza snapshots that contain private course, access, or personal information.
+- Do not commit calendar exports, screenshots, or logs containing private course deadlines.
 - The Learn workflow filters exported cookies to `learn.uwaterloo.ca` and its subdomains only.
 
 ## Repository Layout
@@ -112,6 +119,8 @@ waterloo-course-tools/
 ├── .codex-plugin/
 │   └── plugin.json
 ├── skills/
+│   ├── learn-due-calendar/
+│   │   └── SKILL.md
 │   ├── uwaterloo-learn-download/
 │   │   ├── SKILL.md
 │   │   └── scripts/

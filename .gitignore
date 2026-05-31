@@ -5,6 +5,7 @@ __pycache__/
 
 # Local/private outputs
 learn_content/
+test-skill/
 Piazza_Information_*.md
 learn_cookies.json
 *.cookies.json

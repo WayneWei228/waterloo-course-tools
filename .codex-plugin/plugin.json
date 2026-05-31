@@ -1,7 +1,7 @@
 {
   "name": "waterloo-course-tools",
   "version": "0.1.0",
-  "description": "Codex skills for UWaterloo Learn/Brightspace and Piazza course workflows.",
+  "description": "Codex skills for UWaterloo Learn/Brightspace, Piazza, and course due-date workflows.",
   "author": {
     "name": "Wayne Wei"
   },
@@ -14,13 +14,15 @@
     "learn",
     "brightspace",
     "piazza",
+    "calendar",
+    "deadlines",
     "courses"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Waterloo Course Tools",
-    "shortDescription": "Fetch UWaterloo Learn materials and summarize Piazza course information",
-    "longDescription": "Reusable Codex skills for Waterloo students to sync Learn/Brightspace materials, discover external course pages, and check Piazza posts through browser-use.",
+    "shortDescription": "Fetch UWaterloo Learn materials, Piazza posts, and course due dates",
+    "longDescription": "Reusable Codex skills for Waterloo students to sync Learn/Brightspace materials, discover external course pages, check Piazza posts through browser-use, and add confirmed due dates to Apple Calendar.",
     "developerName": "Tianxiang Wei",
     "category": "Education",
     "capabilities": [
@@ -30,7 +32,8 @@
     ],
     "defaultPrompt": [
       "Sync my UWaterloo Learn course materials.",
-      "Check my course Piazza information."
+      "Check my course Piazza information.",
+      "Find due dates in my synced Learn materials."
     ]
   }
 }
