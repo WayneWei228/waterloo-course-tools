@@ -40,8 +40,6 @@ Installation differs by harness. If you use both Claude Code and Codex, install 
 
 This repository includes a Claude Code marketplace file at `.claude-plugin/marketplace.json`.
 
-For a private repository, make sure Claude Code can access GitHub first. Manual installs use your normal git credentials; background updates can use `GITHUB_TOKEN` or `GH_TOKEN`.
-
 Register the marketplace:
 
 ```bash
@@ -64,7 +62,7 @@ claude plugin validate .
 
 This repository includes a Codex plugin manifest at `.codex-plugin/plugin.json`.
 
-For local or private-repo use, install from the GitHub repository with a Codex marketplace installer:
+Install from the GitHub repository with a Codex marketplace installer:
 
 ```bash
 npx codex-marketplace add WayneWei228/waterloo-course-tools --plugin
@@ -97,7 +95,7 @@ python3 /path/to/plugin-creator/scripts/validate_plugin.py .
 
 ## Privacy
 
-This plugin is designed so private course data stays local:
+This plugin is designed so course data stays local:
 
 - Do not commit Learn cookies.
 - Do not commit downloaded course materials.
@@ -133,14 +131,14 @@ python3 /path/to/plugin-creator/scripts/validate_plugin.py .
 python3 -c "import py_compile; py_compile.compile('skills/uwaterloo-learn-download/scripts/fetch_learn_materials.py', cfile='/tmp/fetch_learn_materials.pyc', doraise=True)"
 ```
 
-Also scan for private or environment-specific content before publishing:
+Also scan for sensitive or environment-specific content before publishing:
 
 ```bash
 rg -n "(/Users/|C:\\\\Users\\\\|/home/|learn_cookies|cookies\\.json|door code|password|secret|token)" .
 rg -n "\\b[0-9]{7}\\b" skills/
 ```
 
-Review any matches manually. Seven-digit numbers can be legitimate examples, but they can also be real Learn org-unit IDs or private course identifiers.
+Review any matches manually. Seven-digit numbers can be legitimate examples, but they can also be real Learn org-unit IDs or course-specific identifiers.
 
 ## Contributing
 
@@ -153,7 +151,7 @@ This project is early and currently focused on Waterloo Learn/Brightspace and Pi
 
 ## Updating
 
-For private use, push updates to this repository and update/reinstall the plugin from your agent harness.
+Push updates to this repository and update or reinstall the plugin from your agent harness.
 
 For Claude Code:
 
