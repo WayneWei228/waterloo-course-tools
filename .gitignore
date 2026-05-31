@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+
+# Local/private outputs
+learn_content/
+Piazza_Information_*.md
+learn_cookies.json
+*.cookies.json
+cookies.json
+
+# Downloaded course material should not be committed by default.
+*.pdf
+*.ppt
+*.pptx
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.zip

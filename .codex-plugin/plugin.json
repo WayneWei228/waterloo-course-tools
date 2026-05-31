@@ -1,0 +1,36 @@
+{
+  "name": "waterloo-course-tools",
+  "version": "0.1.0",
+  "description": "Codex skills for UWaterloo Learn/Brightspace and Piazza course workflows.",
+  "author": {
+    "name": "Wayne Wei"
+  },
+  "homepage": "https://github.com/WayneWei228/waterloo-course-tools",
+  "repository": "https://github.com/WayneWei228/waterloo-course-tools",
+  "license": "MIT",
+  "keywords": [
+    "waterloo",
+    "uwaterloo",
+    "learn",
+    "brightspace",
+    "piazza",
+    "courses"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Waterloo Course Tools",
+    "shortDescription": "Fetch UWaterloo Learn materials and summarize Piazza course information",
+    "longDescription": "Reusable Codex skills for Waterloo students to sync Learn/Brightspace materials, discover external course pages, and check Piazza posts through browser-use.",
+    "developerName": "Tianxiang Wei",
+    "category": "Education",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Sync my UWaterloo Learn course materials.",
+      "Check my course Piazza information."
+    ]
+  }
+}

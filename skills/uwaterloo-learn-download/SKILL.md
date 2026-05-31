@@ -1,0 +1,126 @@
+---
+name: uwaterloo-learn-download
+description: Use when downloading course content files or announcements from UWaterloo Learn/Brightspace (learn.uwaterloo.ca). Covers Learn-only cookie extraction, D2L enrollment discovery, content/API download, manifest protection, external material-page candidate discovery, and stable post-fetch checks.
+---
+
+# UWaterloo Learn Content Downloader
+
+Use this skill to sync UWaterloo Learn/Brightspace course materials into a local workspace. The workflow is intended to be reusable across Waterloo students and terms: courses are discovered from the currently logged-in Learn account, not from hardcoded course IDs.
+
+## Stable Fetch Contract
+
+This skill is the stable entrypoint for Learn fetch work. Do not create one-off workspace scripts when this skill applies. Use the bundled script from this skill directory:
+
+```bash
+python3 <skill-dir>/scripts/fetch_learn_materials.py --root /path/to/workspace
+```
+
+By default, the script writes `learn_content/` under `--root` and mirrors fetched files into matching course folders under `--root`.
+
+By default, courses are discovered from Learn:
+
+```text
+GET /d2l/api/lp/1.28/enrollments/myenrollments/?orgUnitTypeId=3
+```
+
+Use `--courses-json /path/to/courses.json` only when the caller explicitly needs a fixed course list. Use `--only COURSE_SLUG` for targeted refreshes after dynamic discovery.
+
+## Hard Rules
+
+- Cookie export must only save cookies whose domain is `learn.uwaterloo.ca` or a subdomain of `learn.uwaterloo.ca`.
+- Store exported Learn cookies in a local temp file such as `/tmp/learn_cookies.json`; never commit cookies.
+- Fetch behavior must be consistent across runs: same bundled script, same manifest logic, same output structure.
+- `learn_content/_manifest.json` is the authoritative sync ledger.
+- Do not hardcode student-specific course IDs, folders, external webpages, or term assumptions into the general workflow.
+- Discover external material pages from Learn announcements and TOC context, then let Codex/AI choose the real material source by semantic inspection.
+
+## Authentication And Cookie Export
+
+The downloader expects an authenticated Learn session. A reliable local approach is:
+
+1. Start Chrome with remote debugging using a non-default user-data directory.
+2. Open `https://learn.uwaterloo.ca` and complete login/Duo in the browser.
+3. Use CDP `Network.getAllCookies`.
+4. Filter the result down to Learn-only cookies before writing `/tmp/learn_cookies.json`.
+
+Cookie filtering rule:
+
+```python
+cookies = [
+    c for c in all_cookies
+    if c.get("domain", "") == "learn.uwaterloo.ca"
+    or c.get("domain", "").endswith(".learn.uwaterloo.ca")
+]
+```
+
+Do not export broad Waterloo, Google, Chrome profile, or unrelated site cookies.
+
+## External Course Webpages
+
+Some courses keep real materials on an external course webpage linked from Learn announcements or the Learn TOC. Do not solve this with hardcoded course names, hostnames, keyword blacklists, or keyword whitelists.
+
+Stable workflow:
+
+1. The script fetches each course's `news/` API and Learn TOC links.
+2. It writes external link candidates plus surrounding context to:
+
+```text
+learn_content/<COURSE>/_external_candidates.json
+```
+
+3. Codex/AI reads the candidate context and, when useful, opens candidate pages with `browser-use`.
+4. Codex/AI selects the real material source page by semantic understanding.
+5. Run the same script with an AI-selected external page:
+
+```bash
+python3 <skill-dir>/scripts/fetch_learn_materials.py \
+  --root /path/to/workspace \
+  --only COURSE_SLUG \
+  --external-page 'COURSE_SLUG=https://example.com/course/page|Course Materials'
+```
+
+The script downloads only direct material file links from selected pages, such as `.pdf`, `.pptx`, `.docx`, `.xlsx`, `.zip`, `.ipynb`, `.txt`, and `.csv`.
+
+## Manifest Protection
+
+Each downloaded file is tracked in `learn_content/_manifest.json` using its original SHA-256 hash and server modified time.
+
+Behavior:
+
+```text
+file missing                         -> download
+file exists but not in manifest       -> protected-skip
+file hash differs from manifest hash  -> modified-skip
+file hash matches and server unchanged -> unchanged
+file hash matches and server changed  -> update
+```
+
+This protects local annotations, manually added files, and edited notes from being overwritten by a later sync.
+
+## Post-Fetch Checks
+
+After a fetch:
+
+- Check command output for errors.
+- Review `modified-skip` and `protected-skip` events before making any manual changes.
+- Inspect `learn_content/<COURSE>/_external_candidates.json` when a course likely uses external material pages.
+- If the workspace has timestamped annotated PDFs or local note-routing conventions, handle them with the workspace's own rules rather than adding those rules to this general skill.
+
+## Output Structure
+
+Typical workspace structure:
+
+```text
+workspace/
+├── learn_content/
+│   ├── _manifest.json
+│   ├── COURSE_A/
+│   │   ├── _toc.json
+│   │   └── ...
+│   └── COURSE_B/
+│       └── ...
+├── COURSE_A/
+└── COURSE_B/
+```
+
+The `learn_content/` tree is the fetch ledger and source mirror; course folders under the workspace are convenience mirrors for daily use.
