@@ -50,9 +50,12 @@ python3 .../fetch_learn_materials.py --root /path/to/workspace --courses-json /p
 
 ## Course Selection
 
-After cookies are exported and **before running the downloader**, discover available courses and ask the user which to fetch.
+> **STOP. Do not run the downloader yet.**
+>
+> After cookie export, you MUST: call the enrollment API → show courses to the user → wait for their answer → only then run the script.
+> Jumping straight from cookie export to `fetch_learn_materials.py` is a violation.
 
-Discover courses with the enrollment API:
+### Step 1: Discover courses via the enrollment API
 
 ```python
 import json, requests
@@ -69,16 +72,16 @@ for c in courses:
     print(f"  {ou['Code']:20s}  {ou['Name']}")
 ```
 
-Before presenting the list, classify each slug:
+### Step 2: Classify each slug before showing the user
 
-**Normal** — matches `[A-Z]+\d+` with nothing after (e.g. `ECE327`, `MATH213`, `CS341`).
+**Normal** — bare `[A-Z]+\d+` with nothing after (e.g. `ECE327`, `MATH213`, `CS341`).
 
 **Unusual** — flag for clarification if any of:
-- Has a numeric suffix after an underscore: `ECE318_1277913`
+- Numeric suffix after underscore: `ECE318_1277913`
 - Looks like an admin/community org: `Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`
-- Does not match the `[A-Z]+\d+` pattern at all
+- Does not match `[A-Z]+\d+` at all
 
-Present normal and unusual courses separately:
+### Step 3: Show the list and WAIT for user confirmation
 
 ```
 Found N courses on Learn:
@@ -89,21 +92,21 @@ Normal courses:
   ECE380   Analog Control Systems
   MATH213  Advanced Calculus
 
-Unusual entries (need clarification):
-  ECE318_1277913        — looks like a duplicate section of ECE318; skip?
-  Engineering_Co_op_Community — community/admin org, probably not a course; skip?
-  WINTER202             — term org unit, probably not a course; skip?
+Unusual entries — what are these? Skip or keep?
+  ECE318_1277913              — duplicate section of ECE318?
+  Engineering_Co_op_Community — admin org, not a course?
+  WINTER202                   — term org unit, not a course?
 
-What are the unusual ones? Skip them all, or is any one a real course you want?
-Then: fetch all normal courses, or list specific ones?
+Fetch all normal courses, or list specific ones you want?
 ```
 
-Wait for the user to clarify the unusual entries and confirm their selection, then:
-- **"all" / no restrictions** — fetch all confirmed courses without `--only`
-- **Specific codes** — pass `--only SLUG` for each
-- **"none" / empty** — abort
+**Wait for the user's reply. Do not run anything until they respond.**
 
-Do not proceed to fetch until the user has confirmed their selection.
+### Step 4: Run the downloader with their selection
+
+- **"all"** → run without `--only`
+- **Specific codes** → pass `--only SLUG` for each course
+- **"none"** → abort, do not run the downloader
 
 ---
 
