@@ -117,6 +117,11 @@ def save_manifest(path, manifest):
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
 
 
+def get_learn_hash(entry):
+    # Support old manifests that stored the hash under "hash" key
+    return entry.get("learn_hash") or entry.get("hash", "")
+
+
 def topic_filename(topic):
     title = sanitize(topic.get("Title", "Untitled"))
     url = topic.get("Url") or ""
@@ -164,16 +169,6 @@ def iter_topics(modules, prefix=()):
         for topic in module.get("Topics", []):
             yield current, topic
         yield from iter_topics(module.get("Modules", []), current)
-
-
-def write_if_allowed(dest, payload, original_hash):
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists() and original_hash and sha256(dest) != original_hash:
-        return "modified-skip"
-    if dest.exists() and dest.read_bytes() == payload:
-        return "unchanged"
-    dest.write_bytes(payload)
-    return "written"
 
 
 def load_courses(path):
@@ -280,35 +275,81 @@ def external_filename(url, text):
     return label + (suffix or ".html")
 
 
-def write_tracked(output_dir, root, rel, mirror_rel, payload, mtime, manifest, events):
-    key = str(rel)
-    existing = manifest.get(key, {})
-    learn_dest = output_dir / rel
-    course_dest = root / mirror_rel
+def sync_course(root, sync_dir, name, ou, cookie, manifest, events):
+    toc_bytes = request(f"/d2l/api/le/1.75/{ou}/content/toc", cookie, accept="application/json")
+    toc = json.loads(toc_bytes)
 
-    if learn_dest.exists() and existing.get("hash") and sha256(learn_dest) != existing["hash"]:
-        events.append(("modified-skip", key))
-        return
+    course_sync = sync_dir / name
+    course_sync.mkdir(parents=True, exist_ok=True)
+    (course_sync / "_toc.json").write_bytes(
+        json.dumps(toc, indent=2, ensure_ascii=False).encode() + b"\n"
+    )
 
-    payload_hash = hashlib.sha256(payload).hexdigest()
-    if existing.get("hash") == payload_hash and learn_dest.exists():
-        if not course_dest.exists():
-            course_dest.parent.mkdir(parents=True, exist_ok=True)
-            course_dest.write_bytes(learn_dest.read_bytes())
-            events.append(("mirrored", str(course_dest.relative_to(root))))
-        return
+    (root / name).mkdir(parents=True, exist_ok=True)
 
-    learn_dest.parent.mkdir(parents=True, exist_ok=True)
-    learn_dest.write_bytes(payload)
-    manifest[key] = {"hash": payload_hash, "server_mtime": mtime}
-    events.append(("new" if not existing else "updated", key))
+    for module_parts, topic in iter_topics(toc.get("Modules", [])):
+        if topic.get("IsHidden") or topic.get("IsLocked"):
+            continue
 
-    mirror_status = write_if_allowed(course_dest, payload, existing.get("hash"))
-    if mirror_status != "unchanged":
-        events.append((mirror_status, str(course_dest.relative_to(root))))
+        rel = Path(name, *module_parts, topic_filename(topic))
+        key = str(rel)
+        server_mtime = topic.get("LastModifiedDate", "")
+        existing = manifest.get(key, {})
+        dest = root / rel
+
+        if dest.exists():
+            if not existing:
+                # File exists but was never fetched by this script — treat as user-owned
+                events.append(("protected-skip", key))
+                continue
+
+            current_hash = sha256(dest)
+            learn_hash = get_learn_hash(existing)
+
+            if current_hash != learn_hash:
+                # User has modified this file since the last fetch
+                if server_mtime == existing.get("server_mtime"):
+                    # Learn hasn't changed — local edit only, nothing to do
+                    events.append(("modified-skip", key))
+                else:
+                    # Both user and Learn changed — conflict, download Learn's version to /tmp/
+                    try:
+                        payload = topic_payload(topic, cookie)
+                    except Exception as e:
+                        events.append((f"error-{type(e).__name__}", key))
+                        continue
+                    tmp_path = Path("/tmp") / f"learn_new_{dest.name}"
+                    tmp_path.write_bytes(payload)
+                    events.append(("conflict", key, str(tmp_path)))
+                continue
+
+            # current_hash == learn_hash: user hasn't touched the file
+            if server_mtime == existing.get("server_mtime"):
+                events.append(("unchanged", key))
+                continue
+            # Server has a new version and user hasn't modified — safe to overwrite
+
+        # Download and write directly into the course folder
+        try:
+            payload = topic_payload(topic, cookie)
+        except urllib.error.HTTPError as e:
+            events.append((f"error-{e.code}", key))
+            continue
+        except Exception as e:
+            events.append((f"error-{type(e).__name__}", key))
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(payload)
+        payload_hash = hashlib.sha256(payload).hexdigest()
+        status = "new" if not existing else "updated"
+        manifest[key] = {"learn_hash": payload_hash, "server_mtime": server_mtime}
+        events.append((status, key))
+
+    sync_external_sources(sync_dir, name, ou, cookie, toc, events)
 
 
-def sync_external_pages(root, output_dir, name, source_pages, manifest, events):
+def sync_external_pages(root, sync_dir, name, source_pages, manifest, events):
     seen_pages = set()
     for page_url, page_text in source_pages:
         if page_url in seen_pages:
@@ -322,17 +363,6 @@ def sync_external_pages(root, output_dir, name, source_pages, manifest, events):
 
         parsed = urllib.parse.urlparse(page_url)
         page_dir = Path(name, "External Course Webpages", sanitize(parsed.netloc), sanitize(page_text))
-        mirror_dir = Path(name, "External Course Webpages", sanitize(parsed.netloc), sanitize(page_text))
-        write_tracked(
-            output_dir,
-            root,
-            page_dir / "index.html",
-            mirror_dir / "index.html",
-            page,
-            page_url,
-            manifest,
-            events,
-        )
 
         for material_url, text in extract_links(page.decode("utf-8", "replace"), page_url):
             if not is_direct_material(material_url):
@@ -342,12 +372,34 @@ def sync_external_pages(root, output_dir, name, source_pages, manifest, events):
             except Exception as e:
                 events.append((f"external-file-error-{type(e).__name__}", f"{name}: {material_url}"))
                 continue
+
             rel = page_dir / external_filename(material_url, text)
-            mirror_rel = mirror_dir / external_filename(material_url, text)
-            write_tracked(output_dir, root, rel, mirror_rel, payload, material_url, manifest, events)
+            key = str(rel)
+            existing = manifest.get(key, {})
+            dest = root / rel
+
+            if dest.exists():
+                if not existing:
+                    events.append(("protected-skip", key))
+                    continue
+                current_hash = sha256(dest)
+                learn_hash = get_learn_hash(existing)
+                if current_hash != learn_hash:
+                    events.append(("modified-skip", key))
+                    continue
+                if hashlib.sha256(payload).hexdigest() == learn_hash:
+                    events.append(("unchanged", key))
+                    continue
+
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(payload)
+            payload_hash = hashlib.sha256(payload).hexdigest()
+            status = "new" if not existing else "updated"
+            manifest[key] = {"learn_hash": payload_hash, "server_mtime": material_url}
+            events.append((status, key))
 
 
-def sync_external_sources(output_dir, name, ou, cookie, toc, events):
+def sync_external_sources(sync_dir, name, ou, cookie, toc, events):
     candidates = []
     try:
         news = json.loads(request(f"/d2l/api/le/1.75/{ou}/news/", cookie, accept="application/json"))
@@ -384,82 +436,30 @@ def sync_external_sources(output_dir, name, ou, cookie, toc, events):
             }
         )
 
-    course_out = output_dir / name
-    course_out.mkdir(parents=True, exist_ok=True)
-    (course_out / "_external_candidates.json").write_text(
+    course_sync = sync_dir / name
+    course_sync.mkdir(parents=True, exist_ok=True)
+    (course_sync / "_external_candidates.json").write_text(
         json.dumps(candidates, indent=2, ensure_ascii=False) + "\n"
     )
     if candidates:
         events.append(("external-candidates", f"{name}: {len(candidates)}"))
 
 
-def sync_course(root, output_dir, name, ou, cookie, manifest, events):
-    toc_bytes = request(f"/d2l/api/le/1.75/{ou}/content/toc", cookie, accept="application/json")
-    toc = json.loads(toc_bytes)
-
-    course_out = output_dir / name
-    course_out.mkdir(parents=True, exist_ok=True)
-    (course_out / "_toc.json").write_bytes(json.dumps(toc, indent=2, ensure_ascii=False).encode() + b"\n")
-
-    course_root = root / name
-    course_root.mkdir(parents=True, exist_ok=True)
-
-    for module_parts, topic in iter_topics(toc.get("Modules", [])):
-        if topic.get("IsHidden") or topic.get("IsLocked"):
-            continue
-
-        rel = Path(name, *module_parts, topic_filename(topic))
-        key = str(rel)
-        server_mtime = topic.get("LastModifiedDate", "")
-        existing = manifest.get(key, {})
-        learn_dest = output_dir / rel
-        course_dest = course_root / Path(*module_parts, topic_filename(topic))
-
-        if learn_dest.exists() and existing.get("hash"):
-            if sha256(learn_dest) != existing["hash"]:
-                events.append(("modified-skip", key))
-                continue
-            if server_mtime == existing.get("server_mtime"):
-                if not course_dest.exists():
-                    course_dest.parent.mkdir(parents=True, exist_ok=True)
-                    course_dest.write_bytes(learn_dest.read_bytes())
-                    events.append(("mirrored", str(course_dest.relative_to(root))))
-                continue
-
-        try:
-            payload = topic_payload(topic, cookie)
-        except urllib.error.HTTPError as e:
-            events.append((f"error-{e.code}", key))
-            continue
-        except Exception as e:
-            events.append((f"error-{type(e).__name__}", key))
-            continue
-
-        learn_dest.parent.mkdir(parents=True, exist_ok=True)
-        learn_dest.write_bytes(payload)
-        new_hash = sha256(learn_dest)
-        status = "new" if not existing else "updated"
-        manifest[key] = {"hash": new_hash, "server_mtime": server_mtime}
-        events.append((status, key))
-
-        mirror_status = write_if_allowed(course_dest, payload, existing.get("hash"))
-        if mirror_status != "unchanged":
-            events.append((mirror_status, str(course_dest.relative_to(root))))
-
-    sync_external_sources(output_dir, name, ou, cookie, toc, events)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
-    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--sync-dir",
+        type=Path,
+        help="Directory for sync metadata (toc, external candidates). Defaults to <root>/_sync",
+    )
     parser.add_argument("--cookie-file", type=Path, default=Path("/tmp/learn_cookies.json"))
     parser.add_argument("--courses-json", type=Path)
     parser.add_argument(
         "--only",
         action="append",
         default=[],
-        help="Only sync courses whose discovered/generated slug matches this value. Can be repeated.",
+        help="Only sync courses whose discovered slug matches. Can be repeated.",
     )
     parser.add_argument(
         "--external-page",
@@ -471,8 +471,8 @@ def main():
     args = parser.parse_args()
 
     root = args.root.resolve()
-    output_dir = (args.output_dir or root / "learn_content").resolve()
-    manifest_path = output_dir / "_manifest.json"
+    sync_dir = (args.sync_dir or root / "_sync").resolve()
+    manifest_path = root / "_manifest.json"
 
     if not args.cookie_file.exists():
         print(f"missing cookie file: {args.cookie_file}", file=sys.stderr)
@@ -482,7 +482,7 @@ def main():
         print("no learn.uwaterloo.ca cookies found", file=sys.stderr)
         return 2
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    sync_dir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(manifest_path)
     events = []
 
@@ -501,7 +501,7 @@ def main():
             return 2
 
     for name, ou in courses.items():
-        sync_course(root, output_dir, name, ou, cookie, manifest, events)
+        sync_course(root, sync_dir, name, ou, cookie, manifest, events)
 
     for spec in args.external_page:
         try:
@@ -509,16 +509,24 @@ def main():
         except ValueError:
             print(f"invalid --external-page value: {spec}", file=sys.stderr)
             return 2
-        sync_external_pages(root, output_dir, course, [(url, label)], manifest, events)
+        sync_external_pages(root, sync_dir, course, [(url, label)], manifest, events)
 
     save_manifest(manifest_path, manifest)
 
     counts = {}
-    for status, _ in events:
+    for event in events:
+        status = event[0]
         counts[status] = counts.get(status, 0) + 1
 
-    print(json.dumps({"counts": counts, "events": events}, indent=2, ensure_ascii=False))
-    return 1 if any(status.startswith("error-") for status, _ in events) else 0
+    formatted_events = []
+    for event in events:
+        if len(event) == 3:
+            formatted_events.append({"status": event[0], "key": event[1], "tmp": event[2]})
+        else:
+            formatted_events.append({"status": event[0], "key": event[1]})
+
+    print(json.dumps({"counts": counts, "events": formatted_events}, indent=2, ensure_ascii=False))
+    return 1 if any(e[0].startswith("error-") for e in events) else 0
 
 
 if __name__ == "__main__":

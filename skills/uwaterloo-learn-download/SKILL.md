@@ -1,75 +1,147 @@
 ---
 name: uwaterloo-learn-download
-description: Use when downloading course content files or announcements from UWaterloo Learn/Brightspace (learn.uwaterloo.ca). Covers Learn-only cookie extraction, D2L enrollment discovery, content/API download, manifest protection, external material-page candidate discovery, and stable post-fetch checks.
+description: Use when the user asks to download, sync, or update course files or announcements from UWaterloo Learn (learn.uwaterloo.ca).
 ---
 
 # UWaterloo Learn Content Downloader
 
-Use this skill to sync UWaterloo Learn/Brightspace course materials into a local workspace. The workflow is intended to be reusable across Waterloo students and terms: courses are discovered from the currently logged-in Learn account, not from hardcoded course IDs.
+## Overview
 
-## Requirements
+Downloads UWaterloo Learn/Brightspace course materials into a local workspace. Files go directly into `<root>/<COURSE_SLUG>/...` — no duplicate mirror. A `_manifest.json` tracks each file's Learn-origin hash to protect user-modified files from being overwritten.
 
-- Python 3.
-- An authenticated Learn browser session.
-- Learn-only cookies exported from that browser session.
-- Browser automation such as `browser-use` is recommended for login verification and external course-page inspection.
+## Workflow
 
-## Stable Fetch Contract
+Run these phases in order:
 
-This skill is the stable entrypoint for Learn fetch work. Do not create one-off workspace scripts when this skill applies. Use the bundled script from this skill directory:
+1. **Pre-Fetch Audit** — Identify user-owned files before touching anything
+2. **Authentication** — Export Learn-only cookies via browser-use
+3. **Fetch** — Run `fetch_learn_materials.py`
+4. **Post-Fetch** — Review output, reconcile conflicts, check external candidates
+
+---
+
+## Running the Downloader
+
+Stable entrypoint — do not create one-off workspace scripts:
 
 ```bash
 python3 <skill-dir>/scripts/fetch_learn_materials.py --root /path/to/workspace
 ```
 
-By default, the script writes `learn_content/` under `--root` and mirrors fetched files into matching course folders under `--root`.
+Files go to `<root>/<COURSE_SLUG>/...`. Sync metadata goes to `<root>/_sync/<COURSE_SLUG>/`. Manifest at `<root>/_manifest.json`.
 
-By default, courses are discovered from Learn:
-
-```text
+Course discovery (default):
+```
 GET /d2l/api/lp/1.28/enrollments/myenrollments/?orgUnitTypeId=3
 ```
 
-Use `--courses-json /path/to/courses.json` only when the caller explicitly needs a fixed course list. Use `--only COURSE_SLUG` for targeted refreshes after dynamic discovery.
+Targeted refresh:
+```bash
+python3 .../fetch_learn_materials.py --root /path/to/workspace --only COURSE_SLUG
+```
+
+Fixed course list (only when the caller explicitly needs it):
+```bash
+python3 .../fetch_learn_materials.py --root /path/to/workspace --courses-json /path/to/courses.json
+```
+
+---
 
 ## Hard Rules
 
-- Cookie export must only save cookies whose domain is `learn.uwaterloo.ca` or a subdomain of `learn.uwaterloo.ca`.
-- Store exported Learn cookies in a local temp file such as `/tmp/learn_cookies.json`; never commit cookies.
-- Any headed `browser-use` session opened for login, cookie export, or external-page inspection must be closed before the task is complete. Run `browser-use close` and verify `browser-use sessions` shows no active sessions unless the user explicitly asks to keep the browser open.
-- Fetch behavior must be consistent across runs: same bundled script, same manifest logic, same output structure.
-- `learn_content/_manifest.json` is the authoritative sync ledger.
-- Do not hardcode student-specific course IDs, folders, external webpages, or term assumptions into the general workflow.
-- Discover external material pages from Learn announcements and TOC context, then let Codex/AI choose the real material source by semantic inspection.
+- **Learn-only cookies.** Only export cookies from `learn.uwaterloo.ca` or subdomains. Never commit cookies.
+- **Store cookies in `/tmp/learn_cookies.json`.** Never commit.
+- **Close browser-use when done.** Run `browser-use close` + verify `browser-use sessions` shows no active sessions.
+- **Never delete or edit `_manifest.json` manually.**
+- **No hardcoded course IDs, folder names, or term assumptions** in the general workflow.
+
+---
+
+## Pre-Fetch: User File Audit
+
+Run before any authentication or fetch step.
+
+### Step 1: Check USER_NOTED_FILES.md
+
+```bash
+test -f <workspace>/USER_NOTED_FILES.md && echo "exists" || echo "missing"
+```
+
+If it exists: read it, extract "Confirmed Protected Files" and "Likely User Notes To Preserve". Then proceed to Step 2 to catch any files not yet listed.
+
+If missing (cold start): skip to Step 2.
+
+### Step 2: Heuristic Scan
+
+```bash
+ls <workspace>/
+find <workspace> -mindepth 2 -type f \
+  -not -path '<workspace>/_sync/*' \
+  -not -path '<workspace>/.git/*'
+cat <workspace>/_manifest.json 2>/dev/null
+```
+
+Classify as **candidate protected** if any of:
+1. Not in `_manifest.json` — never fetched from Learn
+2. In manifest but `sha256(current) != learn_hash` — user-modified
+3. Timestamped filename (e.g. `name 2026-05-14 17_34_32.ext`)
+
+Do not use filename keyword lists. Use the manifest as the primary signal.
+
+### Step 3: Confirm With User
+
+**Cold start (no manifest, no USER_NOTED_FILES.md):**
+```
+Pre-fetch scan found the following files in your course folders.
+Which of these contain your own work (annotations, notes, edits)?
+
+  ECE327/Lectures/
+    - 02-ece327-s2026-systemverilog-basics-I.pdf  (545 KB)
+    - 04-ece327-s2026-design-case-studies.pdf     (1.7 MB)
+
+  ECE380/4. First and Second Order Systems/
+    - CH4_Notes.md
+
+Which are yours? (say "all", "none", or list specific paths)
+```
+
+Wait for response. Create `USER_NOTED_FILES.md` with confirmed files under "Confirmed Protected Files", then proceed.
+
+**Returning user — new candidates found:**
+```
+Pre-fetch audit: N files already protected.
+
+New files found that may be yours:
+  - ECE350/Lectures/02-concepts.pdf  (13 MB, not in manifest)
+
+Are any of these yours? (y/n per file)
+```
+
+Wait for response. Update `USER_NOTED_FILES.md`, then proceed.
+
+**Returning user — no new candidates:** proceed silently.
+
+---
 
 ## Authentication And Cookie Export
 
-The downloader expects an authenticated Learn session. Prefer the user's local Chrome profile in headed mode so the login/Duo window is visible and the session matches what the user actually completed.
-
-Reliable local approach:
-
 1. Detect local Chrome profiles:
-
 ```bash
 browser-use profile list
 ```
 
-2. Open Learn with headed browser-use and the detected local Chrome profile. Do not hardcode a profile name; use the profile name returned by `browser-use profile list`.
-
+2. Open Learn with the detected profile (do not hardcode the profile name):
 ```bash
 browser-use --headed --profile "<detected Chrome profile>" open https://learn.uwaterloo.ca
 browser-use state
 ```
 
-3. If `browser-use state` still shows Microsoft/ADFS login, have the user complete login/Duo in the visible headed window, then re-run `browser-use state`. Continue only when the state shows the Learn home page or course list.
+3. If state still shows Microsoft/ADFS login, have the user complete login/Duo in the visible window, then re-run `browser-use state`. Continue only when state shows the Learn home page or course list.
 
-4. Export cookies from the logged-in headed session, then filter down to Learn-only cookies before writing `/tmp/learn_cookies.json`.
-
+4. Export and filter to Learn-only cookies:
 ```bash
 browser-use cookies export --url https://learn.uwaterloo.ca /tmp/learn_cookies_raw.json
 ```
-
-Cookie filtering rule:
 
 ```python
 import json
@@ -83,91 +155,141 @@ cookies = [
 json.dump(cookies, open("/tmp/learn_cookies.json", "w"), indent=2)
 ```
 
-Do not export broad Waterloo, Google, Chrome profile, or unrelated site cookies.
+---
 
 ## Browser Cleanup
 
-Before finishing any workflow that opened browser-use:
+Always before finishing any workflow that opened browser-use:
 
 ```bash
 browser-use close
 browser-use sessions
 ```
 
-The expected final session output is:
-
-```text
+Expected output:
+```
 No active sessions
 ```
 
-Do not leave a headed Chrome session running in the background. It can make Chrome appear impossible to close for the user.
+Do not leave a headed Chrome session running in the background.
+
+---
+
+## Manifest Protection
+
+Each fetched file is tracked in `_manifest.json` under `<COURSE_SLUG>/<relative-path>`:
+
+```json
+{
+  "learn_hash": "<sha256 at fetch time>",
+  "server_mtime": "<LastModifiedDate from Learn API>"
+}
+```
+
+| File State | Action |
+|------------|--------|
+| Missing | Download, write manifest entry |
+| Not in manifest | Protected-skip (user-created file) |
+| In manifest, hash matches, server unchanged | Skip |
+| In manifest, hash matches, server changed | Overwrite, update manifest |
+| In manifest, hash differs, server unchanged | Modified-skip (user edited, Learn same) |
+| In manifest, hash differs, server changed | **Conflict**: download Learn's version to `/tmp/learn_new_<filename>`, emit conflict event |
+
+The conflict case is the only one where a second copy temporarily exists.
+
+---
 
 ## External Course Webpages
 
-Some courses keep real materials on an external course webpage linked from Learn announcements or the Learn TOC. Do not solve this with hardcoded course names, hostnames, keyword blacklists, or keyword whitelists.
+Some courses keep real materials on an external page linked from Learn announcements or TOC. Do not solve this with hardcoded hostnames or keyword lists.
 
-Stable workflow:
-
-1. The script fetches each course's `news/` API and Learn TOC links.
-2. It writes external link candidates plus surrounding context to:
-
-```text
-learn_content/<COURSE>/_external_candidates.json
-```
-
-3. Codex/AI reads the candidate context and, when useful, opens candidate pages with `browser-use`.
-4. Codex/AI selects the real material source page by semantic understanding.
-5. Run the same script with an AI-selected external page:
+1. Script writes external link candidates + surrounding context to `_sync/<COURSE_SLUG>/_external_candidates.json`
+2. AI reads the candidates; opens pages with `browser-use` when needed
+3. AI selects the real material source by semantic understanding
+4. Run with the selected page:
 
 ```bash
-python3 <skill-dir>/scripts/fetch_learn_materials.py \
+python3 .../fetch_learn_materials.py \
   --root /path/to/workspace \
   --only COURSE_SLUG \
   --external-page 'COURSE_SLUG=https://example.com/course/page|Course Materials'
 ```
 
-The script downloads only direct material file links from selected pages, such as `.pdf`, `.pptx`, `.docx`, `.xlsx`, `.zip`, `.ipynb`, `.txt`, and `.csv`.
+Downloads only direct file links: `.pdf`, `.pptx`, `.docx`, `.xlsx`, `.zip`, `.ipynb`, `.txt`, `.csv`.
 
-## Manifest Protection
-
-Each downloaded file is tracked in `learn_content/_manifest.json` using its original SHA-256 hash and server modified time.
-
-Behavior:
-
-```text
-file missing                         -> download
-file exists but not in manifest       -> protected-skip
-file hash differs from manifest hash  -> modified-skip
-file hash matches and server unchanged -> unchanged
-file hash matches and server changed  -> update
-```
-
-This protects local annotations, manually added files, and edited notes from being overwritten by a later sync.
+---
 
 ## Post-Fetch Checks
 
-After a fetch:
+After every fetch:
+- Check output for errors
+- Review `modified-skip` and `protected-skip` events
+- Review `conflict` events — require immediate reconciliation (see below)
+- Inspect `_sync/<COURSE_SLUG>/_external_candidates.json` when a course may use external pages
 
-- Check command output for errors.
-- Review `modified-skip` and `protected-skip` events before making any manual changes.
-- Inspect `learn_content/<COURSE>/_external_candidates.json` when a course likely uses external material pages.
-- If the workspace has timestamped annotated PDFs or local note-routing conventions, handle them with the workspace's own rules rather than adding those rules to this general skill.
+### Conflict Reconciliation
+
+For each conflict event:
+```
+---- Conflict: ECE327/Lectures/04-ece327-s2026-design-case-studies.pdf ----
+
+  Your copy:   ECE327/Lectures/04-ece327-s2026-design-case-studies.pdf
+  Learn copy:  /tmp/learn_new_04-ece327-s2026-design-case-studies.pdf
+
+  Sizes:  yours: 14.2 MB  |  Learn: 8.1 MB
+
+Options:
+  (a) Keep your version. Discard the Learn copy from /tmp/.
+  (b) Replace with Learn's version. Your copy is overwritten.
+  (c) Keep both. Learn's version moved to <course>/<name>_learn_new.<ext>.
+
+Your choice (a/b/c)?
+```
+
+Default if no response: **(a)**. Never silently overwrite a user-modified file.
+
+Actions:
+- **(a):** `rm /tmp/learn_new_<filename>`. Clear `server_mtime` in manifest so next fetch re-evaluates.
+- **(b):** `mv /tmp/learn_new_<filename> <dest>`. Update manifest with new hash and mtime.
+- **(c):** `mv /tmp/learn_new_<filename> <course>/<name>_learn_new.<ext>`. Append note to `USER_NOTED_FILES.md` under "## Pending Manual Review".
+
+After all conflicts resolved, print summary:
+```
+Reconciliation complete.
+  ECE327/Lectures/04-ece327-s2026-design-case-studies.pdf  → kept your copy
+  ECE318/Lecture Slides/chapter3a.pdf                      → kept both (review manually)
+
+No protected files were overwritten.
+```
+
+---
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Exporting cookies from all domains | Filter to `learn.uwaterloo.ca` only before writing `/tmp/learn_cookies.json` |
+| Leaving browser-use session open | Always run `browser-use close` + verify no active sessions |
+| Editing or deleting `_manifest.json` | Read-only except by the script — it's the sync ledger |
+| Hardcoding course slugs or IDs | Let the enrollment API discover courses dynamically |
+| Creating workspace scripts instead of using the bundled one | Always use `fetch_learn_materials.py` from the skill directory |
+| Skipping pre-fetch audit | Run it every time — new user files may have appeared since last fetch |
+
+---
 
 ## Output Structure
 
-Typical workspace structure:
-
-```text
+```
 workspace/
-├── learn_content/
-│   ├── _manifest.json
+├── _manifest.json          ← sync ledger (learn_hash + server_mtime per file)
+├── _sync/                  ← metadata only, no material files
 │   ├── COURSE_A/
 │   │   ├── _toc.json
-│   │   └── ...
+│   │   └── _external_candidates.json
 │   └── COURSE_B/
 │       └── ...
-├── COURSE_A/
+├── COURSE_A/               ← material files live here directly
+│   └── ...
 └── COURSE_B/
+    └── ...
 ```
-
-The `learn_content/` tree is the fetch ledger and source mirror; course folders under the workspace are convenience mirrors for daily use.
