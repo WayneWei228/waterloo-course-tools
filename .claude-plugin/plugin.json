@@ -1,7 +1,7 @@
 {
   "name": "waterloo-course-tools",
   "description": "Skills for UWaterloo Learn/Brightspace, Piazza, and course due-date workflows.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Wayne Wei"
   },
@@ -16,7 +16,8 @@
     "piazza",
     "calendar",
     "deadlines",
-    "courses"
+    "courses",
+    "grades"
   ],
   "skills": "./skills/"
 }

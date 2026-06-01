@@ -1,6 +1,6 @@
 {
   "name": "waterloo-course-tools",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Codex skills for UWaterloo Learn/Brightspace, Piazza, and course due-date workflows.",
   "author": {
     "name": "Wayne Wei"
@@ -16,7 +16,8 @@
     "piazza",
     "calendar",
     "deadlines",
-    "courses"
+    "courses",
+    "grades"
   ],
   "skills": "./skills/",
   "interface": {
