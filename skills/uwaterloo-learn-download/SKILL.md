@@ -69,24 +69,39 @@ for c in courses:
     print(f"  {ou['Code']:20s}  {ou['Name']}")
 ```
 
-Present the list to the user:
+Before presenting the list, classify each slug:
+
+**Normal** — matches `[A-Z]+\d+` with nothing after (e.g. `ECE327`, `MATH213`, `CS341`).
+
+**Unusual** — flag for clarification if any of:
+- Has a numeric suffix after an underscore: `ECE318_1277913`
+- Looks like an admin/community org: `Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`
+- Does not match the `[A-Z]+\d+` pattern at all
+
+Present normal and unusual courses separately:
 
 ```
 Found N courses on Learn:
 
+Normal courses:
   ECE327   Digital Hardware Systems
+  ECE350   Operating Systems and System Programming
   ECE380   Analog Control Systems
-  ECE358   Computer Networks
-  CS341    Algorithms
   MATH213  Advanced Calculus
 
-Fetch all, or list the ones you want (e.g. "ECE327 ECE380")?
+Unusual entries (need clarification):
+  ECE318_1277913        — looks like a duplicate section of ECE318; skip?
+  Engineering_Co_op_Community — community/admin org, probably not a course; skip?
+  WINTER202             — term org unit, probably not a course; skip?
+
+What are the unusual ones? Skip them all, or is any one a real course you want?
+Then: fetch all normal courses, or list specific ones?
 ```
 
-Wait for the user's response, then:
-- **"all"** — proceed without `--only`; all courses will be fetched
-- **Specific codes listed** — pass `--only SLUG` for each selected course (run once per course, or repeat flag if the script supports it)
-- **"none" / empty** — abort; do not run the downloader
+Wait for the user to clarify the unusual entries and confirm their selection, then:
+- **"all" / no restrictions** — fetch all confirmed courses without `--only`
+- **Specific codes** — pass `--only SLUG` for each
+- **"none" / empty** — abort
 
 Do not proceed to fetch until the user has confirmed their selection.
 
