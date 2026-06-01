@@ -33,7 +33,7 @@ from fetch_learn_materials import discover_courses
 courses = discover_courses(cookie)  # {folder_name: org_unit_id}
 ```
 
-Skip admin orgs (`Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`). Keep standard course slugs (`ECE327`, `MATH135`, etc.). Duplicates appear as `ECE380_1268352` — these are the same course from a different section org; skip them and use the primary slug only.
+Skip admin orgs (`Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`). Keep standard course slugs (`CS341`, `STAT230`, `ECE327`, etc.). Duplicates appear as `DEPT123_<ou>` — these are the same course from a different section org; skip them and use the primary slug only.
 
 ### Step 3 — Fetch HTML grades page for each course
 

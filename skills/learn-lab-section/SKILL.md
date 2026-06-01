@@ -10,7 +10,7 @@ description: Use when the user asks about their lab section, lecture section, tu
 Fetch all enrolled sections (LAB, LEC, TUT) directly from the D2L enrollment API using `orgUnitTypeId=4` (Groups). This is more reliable and faster than scraping the `user_group_list.d2l` HTML page — one paginated API call returns all section codes for all courses at once.
 
 Section codes follow the format: `<term>-<DEPT>.<NUM>.<section>.<seq>.<type>`
-Example: `1265-ECE.380.206.1.LAB` → ECE380, Lab section 206, Spring 2026
+Example: `1265-CS.341.201.1.LAB` → CS341, Lab section 201, Spring 2026
 
 ## Workflow
 
@@ -53,7 +53,7 @@ def fetch_all_sections(cookie):
 import re
 
 def parse_section(name):
-    # Handles: 1265-ECE.380.206.1.LAB  1265-MATH.135.081.1.LEC
+    # Handles: 1265-CS.341.201.1.LAB  1265-STAT.230.081.1.LEC
     m = re.match(r'(\d+)-([A-Z]+)\.(\d+[A-Z]*)\.(\d+)\.(\d+)\.(LAB|LEC|TUT|SEM|PRJ|TST)', name)
     if m:
         term, dept, num, section, seq, stype = m.groups()
@@ -95,12 +95,10 @@ for course, entries in sorted(by_course.items()):
 ## Output Format
 
 ```
-ECE318: LAB 206  LEC 002  TUT 102
-ECE327: LAB 203  LEC 001  TUT 101
-ECE350: LAB 203  LEC 001  TUT 101
-ECE380: LAB 206  LEC 002  TUT 102
-MATH135: LAB —   LEC 081  TUT —
-PSYCH207: LAB —  LEC 081  TUT —
+CS341:   LAB 201  LEC 001  TUT 101
+CS245:   LAB —    LEC 002  TUT 102
+STAT230: LAB 203  LEC 001  TUT —
+PSYCH101: LAB —  LEC 081  TUT —   ← online/lecture-only courses have no LAB
 ```
 
 ## Common Mistakes
@@ -110,5 +108,5 @@ PSYCH207: LAB —  LEC 081  TUT —
 | Scraping `user_group_list.d2l` HTML per course | Use `orgUnitTypeId=4` API — one call gets all courses at once |
 | Using `orgUnitTypeId=3` (Course Offerings) | Type 3 gives course OUs but no section codes; use type 4 for sections |
 | Using browser-use to open group pages | Not needed — cookies work directly; browser-use forces Duo re-auth every session |
-| Assuming all courses have a LAB section | Online courses (PSYCH207, MATH135) only have LEC; filter by type before displaying |
+| Assuming all courses have a LAB section | Online/lecture-only courses only have LEC; filter by type before displaying |
 | Forgetting to paginate | API returns 100 items per page; loop until `HasMoreItems` is false |
