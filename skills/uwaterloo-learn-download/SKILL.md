@@ -57,49 +57,56 @@ python3 .../fetch_learn_materials.py --root /path/to/workspace --courses-json /p
 
 ### Step 1: Discover courses and compute folder names
 
-The script's `course_slug()` logic determines the actual folder name — not the raw API `Code`. Run this snippet to get both:
+Import `discover_courses` directly from the script — do not duplicate its logic:
 
 ```python
-import json, re, requests
+import json, sys
+sys.path.insert(0, "<skill-dir>/scripts")
+from fetch_learn_materials import discover_courses
 
-def course_slug(code, name, ou):
-    text = code or name or str(ou)
-    m = re.search(r"([A-Z]{2,}\s*\d{3}[A-Z]?)", text, re.I)
-    if m:
-        return m.group(1).upper().replace(" ", "")
-    return re.sub(r"[_\s-]+", "_", text.split("_")[0]) or str(ou)
+cookie = open("/tmp/learn_cookies.json").read().strip()
+# discover_courses returns {folder_name: org_unit_id, ...}
+courses = discover_courses(cookie)
+for folder, ou in courses.items():
+    print(f"  {folder:30s}  (ou={ou})")
+```
 
-cookies = {c["name"]: c["value"] for c in json.load(open("/tmp/learn_cookies.json"))}
+To also show the human-readable course name, fetch it alongside:
+
+```python
+import json, sys, requests
+sys.path.insert(0, "<skill-dir>/scripts")
+from fetch_learn_materials import discover_courses
+
+raw_cookies = json.load(open("/tmp/learn_cookies.json"))
+cookie = "; ".join(f"{c['name']}={c['value']}" for c in raw_cookies)
+courses = discover_courses(cookie)
+
+# Get names from the API for display
 resp = requests.get(
     "https://learn.uwaterloo.ca/d2l/api/lp/1.28/enrollments/myenrollments/",
     params={"orgUnitTypeId": 3},
-    cookies=cookies,
+    headers={"Cookie": cookie},
 )
-seen = {}
-rows = []
-for item in resp.json().get("Items", []):
-    org = item.get("OrgUnit", item)
-    ou = org.get("Id")
-    slug = course_slug(org.get("Code", ""), org.get("Name", ""), ou)
-    if slug in seen:
-        slug = f"{slug}_{ou}"   # same dedup logic as the script
-    seen[slug] = True
-    rows.append({"folder": slug, "name": org.get("Name", ""), "code": org.get("Code", "")})
-
-for r in rows:
-    print(f"  {r['folder']:30s}  {r['name']}")
+ou_to_name = {
+    str(item["OrgUnit"]["Id"]): item["OrgUnit"].get("Name", "")
+    for item in resp.json().get("Items", [])
+    if "OrgUnit" in item
+}
+for folder, ou in courses.items():
+    print(f"  {folder:30s}  {ou_to_name.get(str(ou), '')}")
 ```
 
-The `folder` column is what will appear on disk. Show this to the user, not the raw API code.
+The `folder` key is exactly what will appear on disk and what `--only` expects.
 
 ### Step 2: Classify before showing
 
-**Normal** — folder matches bare `[A-Z]+\d+` (e.g. `ECE327`, `MATH213`).
+**Normal** — folder looks like a standard course code: a subject prefix followed by a number (e.g. `ECE327`, `MATH135`, `CS341`).
 
-**Unusual** — flag for clarification if any of:
-- Folder has a numeric/hash suffix: `ECE318_1277913`
-- Looks like an admin/community org: `Engineering_Co_op_Community`, `WINTER202`
-- Does not match `[A-Z]+\d+` at all
+**Unusual** — use judgment to flag anything that doesn't look like a real course a student would want to download:
+- Has a numeric/hash suffix after an underscore (`ECE318_1277913`) — may be a duplicate section
+- Looks like an admin, community, or term org (`Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`)
+- Name makes it obvious it's not course material
 
 ### Step 3: Show the list and WAIT for user confirmation
 
