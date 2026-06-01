@@ -15,8 +15,9 @@ Run these phases in order:
 
 1. **Pre-Fetch Audit** — Identify user-owned files before touching anything
 2. **Authentication** — Export Learn-only cookies via browser-use
-3. **Fetch** — Run `fetch_learn_materials.py`
-4. **Post-Fetch** — Review output, reconcile conflicts, check external candidates
+3. **Course Selection** — Show discovered courses, let user choose which to fetch
+4. **Fetch** — Run `fetch_learn_materials.py` on selected courses only
+5. **Post-Fetch** — Review output, reconcile conflicts, check external candidates
 
 ---
 
@@ -44,6 +45,50 @@ Fixed course list (only when the caller explicitly needs it):
 ```bash
 python3 .../fetch_learn_materials.py --root /path/to/workspace --courses-json /path/to/courses.json
 ```
+
+---
+
+## Course Selection
+
+After cookies are exported and **before running the downloader**, discover available courses and ask the user which to fetch.
+
+Discover courses with the enrollment API:
+
+```python
+import json, requests
+
+cookies = {c["name"]: c["value"] for c in json.load(open("/tmp/learn_cookies.json"))}
+resp = requests.get(
+    "https://learn.uwaterloo.ca/d2l/api/lp/1.28/enrollments/myenrollments/",
+    params={"orgUnitTypeId": 3},
+    cookies=cookies,
+)
+courses = resp.json().get("Items", [])
+for c in courses:
+    ou = c["OrgUnit"]
+    print(f"  {ou['Code']:20s}  {ou['Name']}")
+```
+
+Present the list to the user:
+
+```
+Found N courses on Learn:
+
+  ECE327   Digital Hardware Systems
+  ECE380   Analog Control Systems
+  ECE358   Computer Networks
+  CS341    Algorithms
+  MATH213  Advanced Calculus
+
+Fetch all, or list the ones you want (e.g. "ECE327 ECE380")?
+```
+
+Wait for the user's response, then:
+- **"all"** — proceed without `--only`; all courses will be fetched
+- **Specific codes listed** — pass `--only SLUG` for each selected course (run once per course, or repeat flag if the script supports it)
+- **"none" / empty** — abort; do not run the downloader
+
+Do not proceed to fetch until the user has confirmed their selection.
 
 ---
 
@@ -274,6 +319,7 @@ No protected files were overwritten.
 | Hardcoding course slugs or IDs | Let the enrollment API discover courses dynamically |
 | Creating workspace scripts instead of using the bundled one | Always use `fetch_learn_materials.py` from the skill directory |
 | Skipping pre-fetch audit | Run it every time — new user files may have appeared since last fetch |
+| Fetching all courses without asking | Always show discovered courses and wait for user confirmation before running the downloader |
 
 ---
 
