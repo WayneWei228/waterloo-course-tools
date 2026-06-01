@@ -114,6 +114,7 @@ Do not proceed to fetch until the user has confirmed their selection.
 - **Close browser-use when done.** Run `browser-use close` + verify `browser-use sessions` shows no active sessions.
 - **Never delete or edit `_manifest.json` manually.**
 - **No hardcoded course IDs, folder names, or term assumptions** in the general workflow.
+- **NEVER run the downloader immediately after getting cookies.** After authentication, you MUST call the enrollment API yourself, show the course list to the user, and wait for their confirmation. Only then run the script. Skipping straight to `fetch_learn_materials.py` after cookie export is a violation.
 
 ---
 
@@ -334,6 +335,7 @@ No protected files were overwritten.
 | Hardcoding course slugs or IDs | Let the enrollment API discover courses dynamically |
 | Creating workspace scripts instead of using the bundled one | Always use `fetch_learn_materials.py` from the skill directory |
 | Skipping pre-fetch audit | Run it every time — new user files may have appeared since last fetch |
+| Running the downloader right after cookie export | **STOP after authentication.** Call the enrollment API, show courses, wait for confirmation. Never go straight to `fetch_learn_materials.py`. |
 | Fetching all courses without asking | Always show discovered courses and wait for user confirmation before running the downloader |
 
 ---
