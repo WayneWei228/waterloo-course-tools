@@ -1,124 +1,90 @@
 ---
 name: learn-grades
-description: Use when the user asks to check, fetch, or show their grades on UWaterloo Learn/Brightspace across any or all enrolled courses.
+description: Use when the user asks to check, view, or fetch their grades on UWaterloo Learn/Brightspace for any or all enrolled courses.
 ---
 
 # UWaterloo Learn Grades
 
 ## Overview
 
-Fetches grades from UWaterloo Learn using a `browser-use` headed session. The HTML grades page at `main.d2l?ou=<ou>` is the authoritative source — the D2L REST API (`myGradeValues`) returns empty arrays for many courses even when grades are clearly visible in the browser.
-
-**Do NOT use the REST API as the primary source.** Always use the HTML grades page via browser-use.
+Fetch grades by scraping the HTML grades page directly with Learn cookies. **Do not use the D2L REST API (`myGradeValues`) as the primary source** — it silently returns empty arrays for courses that DO have visible grades. The HTML page at `main.d2l?ou=<ou>` is authoritative.
 
 ## Workflow
 
-### Step 1 — Check for existing Learn cookies
-
-```bash
-ls /tmp/learn_cookies.json 2>/dev/null && echo "found" || echo "missing"
-```
-
-If missing, use the `uwaterloo-learn-download` skill's authentication step first.
-
-If present but you get HTTP errors when discovering courses (Step 2), cookies are likely expired — re-authenticate before continuing.
-
-### Step 2 — Discover enrolled courses
+### Step 1 — Load cookies
 
 ```python
-import json, sys
-sys.path.insert(0, "/path/to/waterloo-course-tools/skills/uwaterloo-learn-download/scripts")
-from fetch_learn_materials import discover_courses
+import json, urllib.request, re
 
 raw = json.load(open("/tmp/learn_cookies.json"))
 cookie = "; ".join(f"{c['name']}={c['value']}" for c in raw)
+headers = {"Cookie": cookie, "User-Agent": "Mozilla/5.0"}
+```
+
+If `/tmp/learn_cookies.json` is missing, use the `uwaterloo-learn-download` skill to authenticate and export cookies first.
+
+### Step 2 — Discover course org unit IDs
+
+```python
+import sys
+sys.path.insert(0, "/path/to/skills/uwaterloo-learn-download/scripts")
+from fetch_learn_materials import discover_courses
+
 courses = discover_courses(cookie)  # {folder_name: org_unit_id}
-for folder, ou in courses.items():
-    print(f"{folder:35s}  ou={ou}")
 ```
 
-Replace `/path/to/waterloo-course-tools` with the actual plugin cache path, e.g.:
-`/Users/<user>/.claude/plugins/cache/waterloo-course-tools/waterloo-course-tools/<version>`
+Skip admin orgs (`Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`). Keep standard course slugs (`ECE327`, `MATH135`, etc.). Duplicates appear as `ECE380_1268352` — these are the same course from a different section org; skip them and use the primary slug only.
 
-Keep normal course slugs (`ECE327`, `MATH135`) and skip admin orgs (`Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`).
+### Step 3 — Fetch HTML grades page for each course
 
-If `discover_courses` raises an exception or returns HTTP 401/403, the cookies are expired — stop and re-authenticate.
+```python
+def fetch_grades(ou, cookie):
+    url = f"https://learn.uwaterloo.ca/d2l/lms/grades/my_grades/main.d2l?ou={ou}"
+    req = urllib.request.Request(url, headers={"Cookie": cookie, "User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        html = r.read().decode(errors="replace")
 
-### Step 3 — Check for active browser-use session
+    table = re.search(r'<table[^>]*>(.*?)</table>', html, re.DOTALL)
+    if not table:
+        return []
 
-```bash
-browser-use sessions
+    results = []
+    for row in re.findall(r'<tr[^>]*>(.*?)</tr>', table.group(1), re.DOTALL):
+        label = re.search(r'<label>(.*?)</label>', row)
+        if not label:
+            continue
+        name = html.unescape(label.group(1).strip())
+        spans = re.findall(r'<span[^>]*>([^<]+)</span>', row)
+        score = next((s.strip() for s in spans
+                      if re.match(r'[\d.]+ / [\d.]+', s.strip()) or s.strip() == '--'), "")
+        is_child = 'd_g_treeNodeImage' in row
+        results.append(("  " if is_child else "", name, score))
+    return results
 ```
 
-- **Session already active** → go to Step 4 directly using `browser-use open` (no `--headed`)
-- **No active session** → detect Chrome profile and open a new headed session:
+### Step 4 — Handle expired cookies
 
-```bash
-browser-use profile list
-browser-use --headed --profile "<detected profile>" open \
-  "https://learn.uwaterloo.ca/d2l/lms/grades/my_grades/main.d2l?ou=<FIRST_OU>"
-browser-use state
-```
+If the fetched HTML contains `"login"` or `"Sign in"` near the top, cookies are expired. Re-authenticate using `uwaterloo-learn-download` skill, then retry.
 
-**Duo MFA:** If `browser-use state` shows a Duo prompt instead of a grades table, tell the user: *"Please approve the Duo push on your phone."* Wait for their confirmation, then run `browser-use state` again. Continue only when state shows a grades table (contains "Grade Item" and "Points" headers).
-
-### Step 4 — Read grades for each course
-
-For the first course (already open from Step 3), call `browser-use state` and parse the output (see **Reading the Output** below).
-
-For each remaining course, navigate within the existing session:
-
-```bash
-browser-use open "https://learn.uwaterloo.ca/d2l/lms/grades/my_grades/main.d2l?ou=<OU>"
-browser-use state
-```
-
-If state doesn't show a grades table (no "Grade Item" header), wait 2 seconds and try `browser-use state` once more. If it still doesn't show a grades table, note that course as "page did not load" and continue to the next.
-
-### Step 5 — Cleanup
-
-```bash
-browser-use close
-browser-use sessions
-# Expected: No active sessions
+```python
+if "sign in" in html[:500].lower() or "login" in html[:500].lower():
+    print("Cookies expired — re-authenticate first.")
 ```
 
 ## Reading the Output
 
-**Released grade item** (has a percentage line):
-```
-Lab 1
-    99.5 / 100
-    1.00 / 1
-    99.5 %
-```
-
-**Unreleased grade item** (no percentage):
-```
-Quiz 1
-    0 / 30
-    0 / 15
-```
-
-**Category / aggregate row:**
-```
-Laboratory
-    19.9 / 20
-    99.5 %
-```
-
-**Course with no grades configured yet** — state output will show "Grade Item / Points / Weight Achieved" header but no rows beneath it.
-
-**Page did not load** — state output will show navigation elements and no grade table header at all.
+| Pattern | Meaning |
+|---------|---------|
+| `item: 95.83 / 100` | Grade released |
+| `item: 0 / 30` (no %) | Grade item exists but not yet released |
+| No rows in table | Instructor hasn't set up gradebook yet |
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---------|-----|
-| Using `myGradeValues` REST API as primary source | API returns `[]` for most courses; use the HTML grades page via browser-use |
-| Concluding "no grades released" from an empty API response | Re-check via browser-use — API and HTML frequently disagree |
-| Hardcoding org unit IDs | Use `discover_courses()` to discover them dynamically |
-| Opening `--headed` session when one is already running | Run `browser-use sessions` first; if active, use `browser-use open` not `--headed open` |
-| Leaving session open after fetching | Always run `browser-use close` + verify no active sessions |
-| Continuing after Duo prompt without confirming | Wait for user to approve Duo push, then verify state shows grades table |
-| Treating expired cookies as missing cookies | Expired cookies are present but cause API errors — re-auth, don't just skip |
+| Using `myGradeValues` REST API as primary | API returns `[]` for most courses even when grades are visible — always use HTML page |
+| Concluding "no grades" from empty API response | Re-fetch via HTML; API and HTML frequently disagree |
+| Concluding "no grades" when HTML shows all zeros | Zeros mean items exist but unreleased, not that gradebook is empty |
+| Using browser-use to fetch grades | Not needed — cookies work directly; browser-use forces Duo re-auth every session |
+| Hardcoding org unit IDs | Use `discover_courses()` to discover dynamically |
