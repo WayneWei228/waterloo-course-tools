@@ -55,10 +55,19 @@ python3 .../fetch_learn_materials.py --root /path/to/workspace --courses-json /p
 > After cookie export, you MUST: call the enrollment API → show courses to the user → wait for their answer → only then run the script.
 > Jumping straight from cookie export to `fetch_learn_materials.py` is a violation.
 
-### Step 1: Discover courses via the enrollment API
+### Step 1: Discover courses and compute folder names
+
+The script's `course_slug()` logic determines the actual folder name — not the raw API `Code`. Run this snippet to get both:
 
 ```python
-import json, requests
+import json, re, requests
+
+def course_slug(code, name, ou):
+    text = code or name or str(ou)
+    m = re.search(r"([A-Z]{2,}\s*\d{3}[A-Z]?)", text, re.I)
+    if m:
+        return m.group(1).upper().replace(" ", "")
+    return re.sub(r"[_\s-]+", "_", text.split("_")[0]) or str(ou)
 
 cookies = {c["name"]: c["value"] for c in json.load(open("/tmp/learn_cookies.json"))}
 resp = requests.get(
@@ -66,19 +75,30 @@ resp = requests.get(
     params={"orgUnitTypeId": 3},
     cookies=cookies,
 )
-courses = resp.json().get("Items", [])
-for c in courses:
-    ou = c["OrgUnit"]
-    print(f"  {ou['Code']:20s}  {ou['Name']}")
+seen = {}
+rows = []
+for item in resp.json().get("Items", []):
+    org = item.get("OrgUnit", item)
+    ou = org.get("Id")
+    slug = course_slug(org.get("Code", ""), org.get("Name", ""), ou)
+    if slug in seen:
+        slug = f"{slug}_{ou}"   # same dedup logic as the script
+    seen[slug] = True
+    rows.append({"folder": slug, "name": org.get("Name", ""), "code": org.get("Code", "")})
+
+for r in rows:
+    print(f"  {r['folder']:30s}  {r['name']}")
 ```
 
-### Step 2: Classify each slug before showing the user
+The `folder` column is what will appear on disk. Show this to the user, not the raw API code.
 
-**Normal** — bare `[A-Z]+\d+` with nothing after (e.g. `ECE327`, `MATH213`, `CS341`).
+### Step 2: Classify before showing
+
+**Normal** — folder matches bare `[A-Z]+\d+` (e.g. `ECE327`, `MATH213`).
 
 **Unusual** — flag for clarification if any of:
-- Numeric suffix after underscore: `ECE318_1277913`
-- Looks like an admin/community org: `Engineering_Co_op_Community`, `WINTER202`, `UW_Resources`
+- Folder has a numeric/hash suffix: `ECE318_1277913`
+- Looks like an admin/community org: `Engineering_Co_op_Community`, `WINTER202`
 - Does not match `[A-Z]+\d+` at all
 
 ### Step 3: Show the list and WAIT for user confirmation
@@ -86,18 +106,22 @@ for c in courses:
 ```
 Found N courses on Learn:
 
-Normal courses:
-  ECE327   Digital Hardware Systems
-  ECE350   Operating Systems and System Programming
-  ECE380   Analog Control Systems
-  MATH213  Advanced Calculus
+  Folder    Name
+  ────────────────────────────────────────────────
+  ECE318    ECE 318 (Lecture)
+  ECE318_<ou>  ECE 318 Lab          ← duplicate folder, clarify?
+  ECE327    ECE 327
+  ECE350    ECE 350
+  ECE380    ECE 380 (Lecture)
+  ECE380_<ou>  ECE 380 (Lab)        ← duplicate folder, clarify?
+  MATH135   MATH 135 Online
+  PSYCH207  PSYCH 207 Online
 
-Unusual entries — what are these? Skip or keep?
-  ECE318_1277913              — duplicate section of ECE318?
-  Engineering_Co_op_Community — admin org, not a course?
-  WINTER202                   — term org unit, not a course?
+Unusual — skip or keep?
+  Engineering_Co_op_Community  — admin org?
+  WINTER202                    — term org unit?
 
-Fetch all normal courses, or list specific ones you want?
+Fetch all normal courses, or list specific folders you want?
 ```
 
 **Wait for the user's reply. Do not run anything until they respond.**
@@ -105,7 +129,7 @@ Fetch all normal courses, or list specific ones you want?
 ### Step 4: Run the downloader with their selection
 
 - **"all"** → run without `--only`
-- **Specific codes** → pass `--only SLUG` for each course
+- **Specific folders** → pass `--only FOLDER` for each (use the `folder` value, not the API code)
 - **"none"** → abort, do not run the downloader
 
 ---
