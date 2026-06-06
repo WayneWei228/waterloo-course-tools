@@ -13,11 +13,95 @@ Downloads UWaterloo Learn/Brightspace course materials into a local workspace. F
 
 Run these phases in order:
 
-1. **Pre-Fetch Audit** — Identify user-owned files before touching anything
-2. **Authentication** — Export Learn-only cookies via browser-use
-3. **Course Selection** — Show discovered courses, let user choose which to fetch
-4. **Fetch** — Run `fetch_learn_materials.py` on selected courses only
-5. **Post-Fetch** — Review output, reconcile conflicts, check external candidates
+1. **Sync Preferences** — Read or generate `SYNC_PREFERENCES.md` before anything else
+2. **Pre-Fetch Audit** — Identify user-owned files before touching anything
+3. **Authentication** — Export Learn-only cookies via browser-use
+4. **Course Selection** — Show discovered courses, let user choose which to fetch
+5. **Fetch** — Run `fetch_learn_materials.py` on selected courses only
+6. **Post-Fetch Placement** — Move fetched files to destinations from `SYNC_PREFERENCES.md`
+7. **Post-Fetch Checks** — Review output, reconcile conflicts, check external candidates
+
+---
+
+## Sync Preferences
+
+> **STOP. Read this section before doing anything else.**
+>
+> `SYNC_PREFERENCES.md` is the authoritative mapping from Learn API slugs to local folder destinations. It must exist (or be created) before any files are placed.
+
+### Step 1: Check for existing preferences
+
+```bash
+test -f <workspace>/SYNC_PREFERENCES.md && echo "exists" || echo "missing"
+```
+
+**If it exists:** read the full file now. Extract the course-to-folder mapping table and any special placement notes. These rules override all defaults for the entire session.
+
+**If missing:** proceed to Step 2 to create it.
+
+### Step 2 (first run only): Discover courses and ask user
+
+After authentication and course discovery (see Course Selection below), present the discovered courses and ask the user where each should go:
+
+```
+I found these courses on Learn. Before fetching, I need to know how to
+organize the files locally. Please confirm the local folder for each:
+
+  Learn Slug                          Suggested Local Folder
+  ──────────────────────────────────────────────────────────
+  ECE318_wzhuang_002_1265             ECE318/
+  ECE318_hnafissi_1265                ECE318/Lab Information/  ← lab section?
+  ECE327_a2boutro_1265                ECE327/
+  ...
+
+Are these folder assignments correct? Any courses that should go somewhere
+else, or any sub-folder rules (e.g. lab content under a specific subfolder)?
+```
+
+Wait for user confirmation or corrections. Also ask:
+- Are any two slugs for the same course (lecture + lab)? If so, which subfolder for the lab content?
+- Are there any slugs that look like admin/co-op orgs to skip entirely?
+
+### Step 3: Generate SYNC_PREFERENCES.md
+
+Create `<workspace>/SYNC_PREFERENCES.md` using the user's answers. Use this template:
+
+```markdown
+# Learn Sync Preferences
+
+> **Before placing any fetched file:** read this document first to determine
+> the correct local destination. Do not default to the Learn API slug as the
+> folder name — the mapping below is authoritative.
+
+## Course → Local Folder Mapping
+
+| Learn API Slug | Local Folder | Notes |
+|---|---|---|
+| `SLUG_A` (id: XXXXXX) | `COURSE/` | Lecture |
+| `SLUG_B` (id: XXXXXX) | `COURSE/Lab Materials/` | Lab — content goes here |
+
+## Notes on Specific Courses
+
+### Lab Courses
+[Any special handling, e.g. ECE318 Lab content lives under ECE318/Lab Information/]
+
+## Skipped Orgs
+
+These are admin/co-op orgs — always skip:
+- `OrgName` (id: XXXXXX)
+
+## Courses JSON
+
+Stable courses JSON for `--courses-json` flag: `_sync/courses.json`
+```
+
+After writing the file, confirm with the user: "I've created `SYNC_PREFERENCES.md`. You can edit it anytime to change where files are placed."
+
+### Step 4: Enforce during post-fetch placement
+
+After fetching, use the mapping in `SYNC_PREFERENCES.md` to determine where each file goes. The script places files under `<root>/<API_SLUG>/...` by default — after fetch, move or copy files to the correct destinations per the mapping.
+
+For any slug not listed in `SYNC_PREFERENCES.md`, stop and ask the user before placing files.
 
 ---
 
@@ -143,6 +227,10 @@ Fetch all normal courses, or list specific folders you want?
 
 ## Hard Rules
 
+- **Read SYNC_PREFERENCES.md first.** If it exists in the workspace, read it before any other action. Never place files without consulting it.
+- **Generate SYNC_PREFERENCES.md on first run.** If it doesn't exist, create it after course discovery and user confirmation — before fetching anything.
+- **Never place files under the raw API slug** if SYNC_PREFERENCES.md maps that slug elsewhere. The mapping is authoritative.
+- **Ask before placing any unlisted slug.** If a fetched course slug has no entry in SYNC_PREFERENCES.md, stop and ask the user where it goes.
 - **Learn-only cookies.** Only export cookies from `learn.uwaterloo.ca` or subdomains. Never commit cookies.
 - **Store cookies in `/tmp/learn_cookies.json`.** Never commit.
 - **Close browser-use when done.** Run `browser-use close` + verify `browser-use sessions` shows no active sessions.
@@ -314,9 +402,27 @@ Downloads only direct file links: `.pdf`, `.pptx`, `.docx`, `.xlsx`, `.zip`, `.i
 
 ---
 
+## Post-Fetch Placement
+
+After the downloader completes, files sit under `<root>/<API_SLUG>/...`. Use `SYNC_PREFERENCES.md` to move them to the correct destination:
+
+1. For each fetched slug, look up its entry in the mapping table.
+2. If the destination folder differs from the API slug folder, move the files:
+   ```bash
+   # Example: lab content for ECE318_hnafissi_1265 goes into ECE318/Lab Information/
+   mv <root>/ECE318_hnafissi_1265/* <root>/ECE318/Lab\ Information/
+   rmdir <root>/ECE318_hnafissi_1265  # remove empty slug folder
+   ```
+3. If the slug folder is the same as the destination (e.g. `ECE327/`), no move needed.
+4. If any slug is not in SYNC_PREFERENCES.md, stop and ask the user before placing.
+
+After placement, confirm to the user which files moved where.
+
+---
+
 ## Post-Fetch Checks
 
-After every fetch:
+After every fetch and placement:
 - Check output for errors
 - Review `modified-skip` and `protected-skip` events
 - Review `conflict` events — require immediate reconciliation (see below)
@@ -371,6 +477,8 @@ No protected files were overwritten.
 | Skipping pre-fetch audit | Run it every time — new user files may have appeared since last fetch |
 | Running the downloader right after cookie export | **STOP after authentication.** Call the enrollment API, show courses, wait for confirmation. Never go straight to `fetch_learn_materials.py`. |
 | Fetching all courses without asking | Always show discovered courses and wait for user confirmation before running the downloader |
+| Placing files under the raw API slug | Check `SYNC_PREFERENCES.md` first — the mapping is authoritative. API slugs like `ECE318_hnafissi_1265` must be remapped to their destination folders. |
+| Skipping SYNC_PREFERENCES.md on first run | If the file doesn't exist, generate it from user input before fetching. Never leave file placement implicit. |
 
 ---
 
