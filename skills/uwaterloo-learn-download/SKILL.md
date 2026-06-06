@@ -25,19 +25,21 @@ Run these phases in order:
 
 ## Sync Preferences
 
-> **STOP. Read this section before doing anything else.**
+> **THIS IS STEP 0. Do this before pre-fetch audit, before authentication, before anything.**
 >
 > `SYNC_PREFERENCES.md` is the authoritative mapping from Learn API slugs to local folder destinations. It must exist (or be created) before any files are placed.
+>
+> **Do not skip this check even on a cold start.** "The workspace is empty" is not a reason to skip — you still need to check.
 
-### Step 1: Check for existing preferences
+### Step 1: Check for existing preferences — RUN THIS FIRST
 
 ```bash
 test -f <workspace>/SYNC_PREFERENCES.md && echo "exists" || echo "missing"
 ```
 
-**If it exists:** read the full file now. Extract the course-to-folder mapping table and any special placement notes. These rules override all defaults for the entire session.
+**If it exists:** read the full file now. Extract the course-to-folder mapping table and any special placement notes. These rules override all defaults for the entire session. Then continue to Pre-Fetch Audit.
 
-**If missing:** proceed to Step 2 to create it.
+**If missing:** note this — you will generate it after course discovery (Step 2 below). Continue to Pre-Fetch Audit, then Authentication, then Course Selection. Once you have the course list, come back here and do Step 2 before fetching.
 
 ### Step 2 (first run only): Discover courses and ask user
 
