@@ -33,13 +33,17 @@ Run these phases in order:
 
 ### Step 1: Check for existing preferences — RUN THIS FIRST
 
+Run this command now. Do not infer the result from workspace state — actually execute it:
+
 ```bash
 test -f <workspace>/SYNC_PREFERENCES.md && echo "exists" || echo "missing"
 ```
 
-**If it exists:** read the full file now. Extract the course-to-folder mapping table and any special placement notes. These rules override all defaults for the entire session. Then continue to Pre-Fetch Audit.
+**If output is "exists":** read the full file now. Extract the course-to-folder mapping table and any special placement notes. These rules override all defaults for the entire session. Then continue to Pre-Fetch Audit.
 
-**If missing:** note this — you will generate it after course discovery (Step 2 below). Continue to Pre-Fetch Audit, then Authentication, then Course Selection. Once you have the course list, come back here and do Step 2 before fetching.
+**If output is "missing":** note this — you will generate it after course discovery (Step 2 below). Continue to Pre-Fetch Audit, then Authentication, then Course Selection. Once you have the course list, come back here and do Step 2 before fetching.
+
+> **Do not skip this command because the workspace looks empty.** An empty workspace still requires the check — you must run it and report the result before proceeding.
 
 ### Step 2 (first run only): Discover courses and ask user
 
