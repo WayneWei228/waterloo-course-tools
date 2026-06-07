@@ -31,10 +31,11 @@ Piazza is the best place for: "did the prof say anything about X?", "is there a 
 The grading and submission platform:
 - **Assignment submission**: students upload PDFs or handwritten work here (not Learn Dropbox for most written assessments)
 - **Submitted assignment content**: the actual questions/prompts are posted here when the assignment opens
+- **Due dates**: assignment due dates are shown on the Crowdmark assignment page (may differ from or supplement Learn)
 - **Grades and feedback**: after grading, scores per question and marker comments appear here
 - **Submission confirmation**: whether your work was received and the timestamp
 
-Crowdmark is where you go for: "what does assignment X ask?", "did my submission go through?", "what score did I get on each question?", "what did the marker write?"
+Crowdmark is where you go for: "what does assignment X ask?", "when is this assignment due?", "did my submission go through?", "what score did I get on each question?", "what did the marker write?"
 
 ---
 
@@ -46,7 +47,7 @@ Crowdmark is where you go for: "what does assignment X ask?", "did my submission
 | See assignment instructions / rubric | **Learn** or **Crowdmark** (check both — some courses post on Crowdmark only) |
 | Submit an assignment | **Crowdmark** (written work) or **Learn Dropbox** (check assignment instructions) |
 | Confirm submission was received | **Crowdmark** (submission status page) |
-| Check due dates | **Learn** (calendar / dropbox list) |
+| Check due dates | **Learn** (calendar / dropbox list) or **Crowdmark** (assignment page) |
 | See released grades | **Crowdmark** (per-question scores + feedback) or **Learn** (gradebook total) |
 | See marker comments on a graded paper | **Crowdmark** |
 | Find a prof/TA clarification or announcement | **Piazza** first, then **Learn Announcements** |
@@ -105,3 +106,4 @@ When the answer could be on multiple platforms, check them in this order: **Crow
 | Looking for submission confirmation on Learn Dropbox | Most written assessments submit through Crowdmark, not Learn |
 | Treating Piazza as optional | If the course uses Piazza, instructor clarifications there are often more current than Learn announcements |
 | Checking Learn for marker comments | Marker annotations and per-question feedback are on Crowdmark, not Learn |
+| Looking for due dates only on Learn | Crowdmark also shows due dates per assignment — check both when dates are unclear |
